@@ -1,21 +1,10 @@
-FROM node:20-alpine3.19
-
+FROM node:18-alpine
 WORKDIR /app
 
-# Copy lock files first for better caching
-COPY package-lock.json package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund --legacy-peer-deps
 
-# Install dependencies using npm ci
-RUN npm ci --no-audit --no-fund
+COPY backend/package.json backend/package-lock.json ./backend/
+RUN cd backend && npm ci --no-audit --no-fund
 
-# Copy entire project including tests and source code
 COPY . .
-
-# Build the Next.js frontend
-RUN npm run build
-
-# Expose ports for frontend and backend
-EXPOSE 3000 3001 5432
-
-# Default command to run tests
-CMD ["npm", "test"]
