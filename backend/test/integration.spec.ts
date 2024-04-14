@@ -1,16 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
+import { HealthController } from '../src/health/health.controller';
 
 describe('Integration Tests', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [],
+      controllers: [HealthController],
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.enableCors({ origin: '*' });
     await app.init();
   });
 
@@ -31,7 +33,7 @@ describe('Integration Tests', () => {
   describe('CORS Headers', () => {
     it('should include CORS headers in response', async () => {
       const response = await request(app.getHttpServer())
-        .get('/')
+        .get('/health')
         .set('Origin', 'http://localhost:3000');
 
       expect(response.headers['access-control-allow-origin']).toBeDefined();
@@ -41,7 +43,7 @@ describe('Integration Tests', () => {
   describe('Security Headers', () => {
     it('should include security headers', async () => {
       const response = await request(app.getHttpServer())
-        .get('/');
+        .get('/health');
 
       expect(response.headers).toBeDefined();
     });

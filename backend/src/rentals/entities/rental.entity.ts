@@ -7,10 +7,10 @@ export class Rental {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Car, car => car.rentals)
+  @ManyToOne(() => Car)
   car: Car;
 
-  @ManyToOne(() => Customer, customer => customer.rentals)
+  @ManyToOne(() => Customer)
   customer: Customer;
 
   @Column('timestamp')

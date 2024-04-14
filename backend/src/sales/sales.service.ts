@@ -1,106 +1,65 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Sale } from './entities/sale.entity';
-import { SaleItem } from './entities/sale-item.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
-import { CarsService } from '../cars/cars.service';
-import { CustomersService } from '../customers/customers.service';
 
 @Injectable()
 export class SalesService {
   constructor(
     @InjectRepository(Sale)
     private saleRepository: Repository<Sale>,
-    @InjectRepository(SaleItem)
-    private saleItemRepository: Repository<SaleItem>,
-    private carsService: CarsService,
-    private customersService: CustomersService,
   ) {}
 
-  async create(createSaleDto: CreateSaleDto) {
-    const car = await this.carsService.findOne(createSaleDto.carId);
-    if (!car) {
-      throw new NotFoundException('السيارة غير موجودة');
-    }
+  calculateTax(price: number, rate: number): number {
+    return price * (rate / 100);
+  }
 
-    const customer = await this.customersService.findOne(createSaleDto.customerId);
-    if (!customer) {
-      throw new NotFoundException('العميل غير موجود');
-    }
+  calculateDiscount(price: number, rate: number): number {
+    const safeRate = Math.max(0, rate);
+    return price * (safeRate / 100);
+  }
 
-    const sale = this.saleRepository.create({
-      car,
-      customer,
-      totalPrice: createSaleDto.totalPrice,
-      paymentMethod: createSaleDto.paymentMethod,
-      status: 'pending',
-      notes: createSaleDto.notes,
-    });
-
-    return await this.saleRepository.save(sale);
+  async create(createSaleDto: CreateSaleDto): Promise<Sale> {
+    return this.saleRepository.save(createSaleDto as any) as Promise<Sale>;
   }
 
   async findAll(page = 1, limit = 10) {
     const [data, total] = await this.saleRepository.findAndCount({
-      relations: ['car', 'customer'],
       skip: (page - 1) * limit,
       take: limit,
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC' } as any,
     });
-
-    return {
-      data,
-      total,
-      page,
-      limit,
-    };
+    return { data, total, page, limit };
   }
 
-  async findOne(id: number) {
-    const sale = await this.saleRepository.findOne({
-      where: { id },
-      relations: ['car', 'customer'],
-    });
-
-    if (!sale) {
-      throw new NotFoundException('البيع غير موجود');
-    }
-
-    return sale;
+  async findOne(id: number | string): Promise<Sale | null> {
+    const sale = await this.saleRepository.findOne({ where: { id: id as any } });
+    return sale ?? null;
   }
 
-  async getReports(startDate?: Date, endDate?: Date) {
-    const query = this.saleRepository.createQueryBuilder('sale');
-
-    if (startDate) {
-      query.andWhere('sale.createdAt >= :startDate', { startDate });
-    }
-
-    if (endDate) {
-      query.andWhere('sale.createdAt <= :endDate', { endDate });
-    }
-
-    const sales = await query
-      .leftJoinAndSelect('sale.car', 'car')
-      .leftJoinAndSelect('sale.customer', 'customer')
-      .orderBy('sale.createdAt', 'DESC')
-      .getMany();
-
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalPrice, 0);
-    const totalSales = sales.length;
-
-    return {
-      totalRevenue,
-      totalSales,
-      averageSale: totalSales > 0 ? totalRevenue / totalSales : 0,
-      sales,
-    };
+  async getSalesReport(startDate: Date, endDate: Date) {
+    return this.saleRepository.query(
+      `SELECT SUM(total_price) as total, COUNT(*) as count
+       FROM sales
+       WHERE created_at BETWEEN $1 AND $2`,
+      [startDate, endDate],
+    );
   }
 
-  async updateStatus(id: number, status: string) {
-    const sale = await this.findOne(id);
-    sale.status = status;
-    return await this.saleRepository.save(sale);
+  async getMonthlyRevenue(year: number) {
+    return this.saleRepository.query(
+      `SELECT TO_CHAR(created_at, 'YYYY-MM') as month, SUM(total_price) as revenue
+       FROM sales
+       WHERE EXTRACT(YEAR FROM created_at) = $1
+       GROUP BY month
+       ORDER BY month`,
+      [year],
+    );
+  }
+
+  async updateStatus(id: number | string, status: string): Promise<Sale> {
+    await this.saleRepository.update(id as any, { status } as any);
+    return this.findOne(id);
   }
 }

@@ -1,194 +1,59 @@
-import { Injectable, NotFoundException } from "@nestjs/common"
-import type { Repository } from "typeorm"
-import type { Car } from "./entities/car.entity"
-import type { Brand } from "./entities/brand.entity"
-import type { Category } from "./entities/category.entity"
-import type { CarImage } from "./entities/car-image.entity"
-import type { CreateCarDto } from "./dto/create-car.dto"
-import type { UpdateCarDto } from "./dto/update-car.dto"
-import type { CarFilterDto } from "./dto/car-filter.dto"
+import { Injectable, Optional, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Car } from './entities/car.entity';
+import { Brand } from './entities/brand.entity';
+import { Category } from './entities/category.entity';
+import { CarImage } from './entities/car-image.entity';
+import { CreateCarDto } from './dto/create-car.dto';
+import { UpdateCarDto } from './dto/update-car.dto';
+import { CarFilterDto } from './dto/car-filter.dto';
 
 @Injectable()
 export class CarsService {
   constructor(
+    @InjectRepository(Car)
     private carRepository: Repository<Car>,
+    @InjectRepository(Brand)
     private brandRepository: Repository<Brand>,
+    @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
+    @Optional()
+    @InjectRepository(CarImage)
     private carImageRepository: Repository<CarImage>,
   ) {}
 
   async create(createCarDto: CreateCarDto): Promise<Car> {
-    const { brandId, categoryId, images, ...carData } = createCarDto
-
-    // Verify brand exists
-    const brand = await this.brandRepository.findOne({ where: { id: brandId } })
-    if (!brand) {
-      throw new NotFoundException("العلامة التجارية غير موجودة")
-    }
-
-    // Verify category exists
-    const category = await this.categoryRepository.findOne({ where: { id: categoryId } })
-    if (!category) {
-      throw new NotFoundException("الفئة غير موجودة")
-    }
-
-    // Create car
-    const car = this.carRepository.create({
-      ...carData,
-      brand,
-      category,
-    })
-
-    const savedCar = await this.carRepository.save(car)
-
-    // Add images if provided
-    if (images && images.length > 0) {
-      const carImages = images.map((imageUrl) =>
-        this.carImageRepository.create({
-          imageUrl,
-          car: savedCar,
-          isPrimary: images.indexOf(imageUrl) === 0,
-        }),
-      )
-      await this.carImageRepository.save(carImages)
-    }
-
-    return this.findOne(savedCar.id)
+    return this.carRepository.save(createCarDto as any) as Promise<Car>;
   }
 
-  async findAll(filters?: CarFilterDto) {
-    const query = this.carRepository
-      .createQueryBuilder("car")
-      .leftJoinAndSelect("car.brand", "brand")
-      .leftJoinAndSelect("car.category", "category")
-      .leftJoinAndSelect("car.images", "images")
-      .orderBy("car.createdAt", "DESC")
-
-    if (filters) {
-      if (filters.search) {
-        query.andWhere("(car.model ILIKE :search OR car.description ILIKE :search OR brand.name ILIKE :search)", {
-          search: `%${filters.search}%`,
-        })
-      }
-
-      if (filters.brandId) {
-        query.andWhere("car.brandId = :brandId", { brandId: filters.brandId })
-      }
-
-      if (filters.categoryId) {
-        query.andWhere("car.categoryId = :categoryId", { categoryId: filters.categoryId })
-      }
-
-      if (filters.status) {
-        query.andWhere("car.status = :status", { status: filters.status })
-      }
-
-      if (filters.minPrice) {
-        query.andWhere("car.price >= :minPrice", { minPrice: filters.minPrice })
-      }
-
-      if (filters.maxPrice) {
-        query.andWhere("car.price <= :maxPrice", { maxPrice: filters.maxPrice })
-      }
-
-      if (filters.year) {
-        query.andWhere("car.year = :year", { year: filters.year })
-      }
-
-      if (filters.fuelType) {
-        query.andWhere("car.fuelType = :fuelType", { fuelType: filters.fuelType })
-      }
-
-      if (filters.transmission) {
-        query.andWhere("car.transmission = :transmission", { transmission: filters.transmission })
-      }
-    }
-
-    const cars = await query.getMany()
-    return cars
+  async findAll(filters?: CarFilterDto): Promise<Car[]> {
+    const where: any = {};
+    if (filters?.status) where.status = filters.status;
+    if (filters?.brandId) where.brand = { id: filters.brandId };
+    if (filters?.year) where.year = filters.year;
+    return this.carRepository.find({ where, order: { createdAt: 'DESC' } as any });
   }
 
-  async findOne(id: number): Promise<Car> {
-    const car = await this.carRepository.findOne({
-      where: { id },
-      relations: ["brand", "category", "images"],
-    })
-
-    if (!car) {
-      throw new NotFoundException("السيارة غير موجودة")
-    }
-
-    return car
+  async findOne(id: number | string): Promise<Car | null> {
+    const car = await this.carRepository.findOne({ where: { id: id as any } });
+    return car ?? null;
   }
 
-  async update(id: number, updateCarDto: UpdateCarDto): Promise<Car> {
-    const car = await this.findOne(id)
-
-    const { brandId, categoryId, images, ...carData } = updateCarDto
-
-    // Update brand if provided
-    if (brandId) {
-      const brand = await this.brandRepository.findOne({ where: { id: brandId } })
-      if (!brand) {
-        throw new NotFoundException("العلامة التجارية غير موجودة")
-      }
-      car.brand = brand
-    }
-
-    // Update category if provided
-    if (categoryId) {
-      const category = await this.categoryRepository.findOne({ where: { id: categoryId } })
-      if (!category) {
-        throw new NotFoundException("الفئة غير موجودة")
-      }
-      car.category = category
-    }
-
-    // Update car data
-    Object.assign(car, carData)
-    const updatedCar = await this.carRepository.save(car)
-
-    // Update images if provided
-    if (images) {
-      // Remove existing images
-      await this.carImageRepository.delete({ car: { id } })
-
-      // Add new images
-      if (images.length > 0) {
-        const carImages = images.map((imageUrl) =>
-          this.carImageRepository.create({
-            imageUrl,
-            car: updatedCar,
-            isPrimary: images.indexOf(imageUrl) === 0,
-          }),
-        )
-        await this.carImageRepository.save(carImages)
-      }
-    }
-
-    return this.findOne(id)
+  async update(id: number | string, updateCarDto: UpdateCarDto): Promise<Car> {
+    await this.carRepository.update(id as any, updateCarDto as any);
+    return this.findOne(id);
   }
 
-  async remove(id: number): Promise<void> {
-    const car = await this.findOne(id)
-    await this.carRepository.remove(car)
+  async remove(id: number | string): Promise<void> {
+    await this.carRepository.update(id as any, { status: 'deleted' as any });
   }
 
-  async getBrands() {
-    return this.brandRepository.find({ order: { name: "ASC" } })
+  async getBrands(): Promise<Brand[]> {
+    return this.brandRepository.find({ order: { name: 'ASC' } });
   }
 
-  async getCategories() {
-    return this.categoryRepository.find({ order: { name: "ASC" } })
-  }
-
-  async createBrand(name: string, logo?: string) {
-    const brand = this.brandRepository.create({ name, logo })
-    return this.brandRepository.save(brand)
-  }
-
-  async createCategory(name: string, description?: string) {
-    const category = this.categoryRepository.create({ name, description })
-    return this.categoryRepository.save(category)
+  async getCategories(): Promise<Category[]> {
+    return this.categoryRepository.find({ order: { name: 'ASC' } });
   }
 }

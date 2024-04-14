@@ -20,30 +20,14 @@ export class AuthService {
     return null;
   }
 
-  async login(loginDto: LoginDto) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
-    if (!user) {
-      throw new UnauthorizedException('بيانات الدخول غير صحيحة');
-    }
-
-    const payload = { 
-      email: user.email, 
-      sub: user.id, 
+  login(user: any) {
+    const payload = {
+      email: user.email,
+      sub: user.id,
       role: user.role,
-      permissions: user.permissions 
     };
-
     return {
       access_token: this.jwtService.sign(payload),
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        permissions: user.permissions,
-        status: user.status,
-        avatar: user.avatar,
-      },
     };
   }
 

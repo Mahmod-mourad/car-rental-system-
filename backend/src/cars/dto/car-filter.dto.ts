@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsNumber, IsEnum } from "class-validator"
+import { IsOptional, IsString, IsNumber } from "class-validator"
 import { Type } from "class-transformer"
 import { ApiProperty } from "@nestjs/swagger"
 import { CarStatus, FuelType, Transmission } from "./create-car.dto"
@@ -21,10 +21,10 @@ export class CarFilterDto {
   @IsNumber()
   categoryId?: number
 
-  @ApiProperty({ required: false, description: "حالة السيارة", enum: CarStatus })
+  @ApiProperty({ required: false, description: "حالة السيارة" })
   @IsOptional()
-  @IsEnum(CarStatus)
-  status?: CarStatus
+  @IsString()
+  status?: string
 
   @ApiProperty({ required: false, description: "أقل سعر" })
   @IsOptional()
